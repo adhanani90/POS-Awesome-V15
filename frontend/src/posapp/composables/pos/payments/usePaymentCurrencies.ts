@@ -4,6 +4,7 @@ import {
 	resolveExchangeRate,
 	type ExchangeRateResult,
 } from "../../../services/exchangeRateResolver";
+import { usdBillCdfQuotes } from "../../../services/storeRateBinding";
 
 type PaymentCurrencyOptions = {
 	invoiceDoc: Ref<any>;
@@ -121,6 +122,30 @@ export function usePaymentCurrencies(options: PaymentCurrencyOptions) {
 		const paymentCurrency = payment.posa_payment_currency || defaultCurrencyFor(payment);
 		payment.posa_payment_currency = paymentCurrency;
 
+		// Ruhee C7 (fork m1-c7-client-rate): USD bill paid in CDF. CDF due = USD x
+		// higher (R3); the net CDF recorded covers CDF / higher USD. Its base-rate
+		// value (R7) is posted by the server's Payment Entry, not here.
+		const store = usdBillCdfQuotes(
+			unref(options.posProfile)?.name,
+			invoiceCurrency,
+			paymentCurrency,
+		);
+		if (store) {
+			let tender = preciseTenderAmount(payment.posa_original_amount);
+			if (preserveInvoiceAmount) {
+				tender = preciseTenderAmount(flt(payment.amount) * store.higher);
+			}
+			payment.posa_original_amount = tender;
+			payment.posa_exchange_rate = 1 / store.higher;
+			payment.posa_company_exchange_rate = 1 / store.higher;
+			payment.posa_rate_date = store.effective_from?.slice(0, 10) || doc.posting_date;
+			payment.posa_rate_source = "store_rate";
+			payment.amount = flt(tender / store.higher);
+			payment.base_amount = payment.amount;
+			payment._posa_rate_error = null;
+			return true;
+		}
+
 		const manualRate =
 			allowManualRate.value && payment.posa_rate_source === "manual"
 				? payment.posa_exchange_rate
@@ -203,6 +228,16 @@ export function usePaymentCurrencies(options: PaymentCurrencyOptions) {
 		companyAmount?: number,
 	) => {
 		payment.amount = flt(invoiceAmount);
+		const doc = unref(options.invoiceDoc) || {};
+		if (
+			usdBillCdfQuotes(
+				unref(options.posProfile)?.name,
+				doc.currency,
+				payment.posa_payment_currency || defaultCurrencyFor(payment),
+			)
+		) {
+			return normalizePayment(payment, { preserveInvoiceAmount: true });
+		}
 		if (Number.isFinite(companyAmount)) {
 			if (!Number(payment.posa_company_exchange_rate)) {
 				const initialized = await normalizePayment(payment, { preserveInvoiceAmount: true });

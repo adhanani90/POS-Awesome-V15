@@ -6,6 +6,10 @@ import {
 import { _getPlcConversionRate } from "./currency";
 import { resolvePosDocumentDoctype } from "../../../utils/posDocumentMode";
 import { toCompanyCurrency } from "../../../utils/erpnextCurrency";
+import {
+	applyStoreRateBinding,
+	getActiveStoreRate,
+} from "../../../services/storeRateBinding";
 
 declare const flt: (_value: unknown, _precision?: number) => number;
 declare const frappe: any;
@@ -202,6 +206,8 @@ export function get_invoice_doc(context: any) {
 	// Use actual price list currency if available
 	doc.price_list_currency = context.price_list_currency;
 	doc.plc_conversion_rate = _getPlcConversionRate(context);
+	// Ruhee C7 (fork m1-c7-client-rate): record name and quotes on every payload.
+	applyStoreRateBinding(doc);
 
 	// Other fields
 	doc.campaign = doc.campaign || context.pos_profile?.campaign || null;
@@ -597,6 +603,17 @@ export function get_invoice_items(context: any) {
 
 		if (requiresDeliveryDate && itemDeliveryDate) {
 			new_item.delivery_date = itemDeliveryDate;
+		}
+
+		// Ruhee C7 (fork m1-c7-client-rate): the USD price this line was billed from,
+		// so the server checks CDF = USD x base without reading today's Item Price.
+		if (getActiveStoreRate()) {
+			const companyCurrency = context.pos_profile?.currency;
+			const original = Number(item.original_rate);
+			new_item.ruhee_c7_usd_price =
+				Number.isFinite(original) && original > 0 && item.original_currency === companyCurrency
+					? original
+					: flt(item.base_price_list_rate);
 		}
 
 		// Handle currency conversion for rates and amounts

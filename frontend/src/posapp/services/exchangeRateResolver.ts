@@ -3,6 +3,7 @@ import {
 	saveExchangeRateCache,
 } from "../../offline/index";
 import { currencyRateRepository } from "../../offline/repositories";
+import { getActiveStoreRate, storeResolverRate } from "./storeRateBinding";
 
 declare const frappe: any;
 
@@ -11,7 +12,8 @@ export type ExchangeRateSource =
 	| "manual"
 	| "currency_exchange"
 	| "offline_cache"
-	| "derived_inverse";
+	| "derived_inverse"
+	| "store_rate";
 
 export type ExchangeRateResult = {
 	found: boolean;
@@ -209,6 +211,21 @@ export async function resolveExchangeRate(
 			effectiveDate: args.effectiveDate,
 			rateDate: args.effectiveDate,
 			source: "same_currency",
+		};
+	}
+
+	// Ruhee C7 (fork m1-c7-client-rate): a bound profile's USD/CDF rates come from
+	// the store record, never from Currency Exchange or a cached company rate.
+	const storeRate = storeResolverRate(args.profileName, args.fromCurrency, args.toCurrency);
+	if (storeRate) {
+		return {
+			found: true,
+			fromCurrency: args.fromCurrency,
+			toCurrency: args.toCurrency,
+			rate: storeRate,
+			effectiveDate: args.effectiveDate,
+			rateDate: getActiveStoreRate()?.effective_from?.slice(0, 10) || args.effectiveDate,
+			source: "store_rate",
 		};
 	}
 

@@ -1,3 +1,5 @@
+import { directQuote } from "../services/storeRateBinding";
+
 type CurrencyLikeContext = {
 	company?: { default_currency?: string } | null;
 	pos_profile?: { currency?: string; company?: string } | null;
@@ -62,11 +64,24 @@ export const getPlcConversionRate = (context: CurrencyLikeContext): number => {
 	return displayRate * conversionRate;
 };
 
+// Ruhee C7 (fork m1-c7-client-rate): with a store binding, convert by the direct
+// quote (USD -> CDF = base) instead of dividing or multiplying by a reciprocal.
+const boundQuote = (context: CurrencyLikeContext): number | null => {
+	const companyCurrency = getCompanyCurrency(context);
+	const selectedCurrency = getSelectedCurrency(context);
+	if (!companyCurrency || !selectedCurrency || companyCurrency === selectedCurrency) {
+		return null;
+	}
+	return directQuote(companyCurrency, selectedCurrency);
+};
+
 export const toCompanyCurrency = (
 	context: CurrencyLikeContext,
 	amount: unknown,
 ): number => {
 	const numeric = Number.parseFloat(String(amount ?? 0)) || 0;
+	const quote = boundQuote(context);
+	if (quote) return numeric / quote;
 	return numeric * getConversionRate(context);
 };
 
@@ -75,6 +90,8 @@ export const fromCompanyCurrency = (
 	amount: unknown,
 ): number => {
 	const numeric = Number.parseFloat(String(amount ?? 0)) || 0;
+	const quote = boundQuote(context);
+	if (quote) return numeric * quote;
 	const rate = getConversionRate(context);
 	return rate ? numeric / rate : numeric;
 };
@@ -84,5 +101,9 @@ export const priceListToSelectedCurrency = (
 	priceListAmount: unknown,
 ): number => {
 	const numeric = Number.parseFloat(String(priceListAmount ?? 0)) || 0;
+	const quote = boundQuote(context);
+	if (quote && getPriceListCurrency(context) === getCompanyCurrency(context)) {
+		return numeric * quote;
+	}
 	return numeric * getPlcConversionRate(context) / getConversionRate(context);
 };

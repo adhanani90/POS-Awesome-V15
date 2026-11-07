@@ -17,6 +17,10 @@ import stockCoordinator from "../../../utils/stockCoordinator";
 import { parseBooleanSetting } from "../../../utils/stock";
 import { resolvePosDocumentDoctype } from "../../../utils/posDocumentMode";
 import { toCompanyCurrency } from "../../../utils/erpnextCurrency";
+import {
+	applyStoreRateBinding,
+	stampBillIssued,
+} from "../../../services/storeRateBinding";
 import { shouldApplyReturnRefundCap } from "../../../utils/paymentInitialization";
 import {
 	findLossRiskItems,
@@ -899,6 +903,9 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 	};
 
 	const buildSubmissionInvoiceDoc = (doc: any) => {
+		// Ruhee C7 (fork m1-c7-client-rate): the issue time is stamped on the cart's own
+		// doc once, so a second attempt or an offline replay keeps the first stamp.
+		stampBillIssued(applyStoreRateBinding(doc));
 		const submissionDoc = JSON.parse(JSON.stringify(doc || {}));
 		ensureInvoiceClientRequestId(submissionDoc);
 		normalizeLoyaltyRedemptionForSubmission(submissionDoc);

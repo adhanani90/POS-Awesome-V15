@@ -35,6 +35,7 @@ import {
 	savePriceListMetaCache,
 } from "../../../../offline/index";
 import { resolveExchangeRate } from "../../../services/exchangeRateResolver";
+import { refreshStoreRate } from "../../../services/storeRateBinding";
 import {
 	fromCompanyCurrency,
 	getPlcConversionRate,
@@ -239,6 +240,8 @@ export function useInvoiceCurrency() {
 			company: pos_profile.value.company,
 			effectiveDate: rateDate,
 		};
+		// Ruhee C7 (fork m1-c7-client-rate): the store record in force, before any rate.
+		await refreshStoreRate(pos_profile.value);
 		const companyResult = await resolveExchangeRate({
 			...common,
 			fromCurrency: selected_currency.value,
